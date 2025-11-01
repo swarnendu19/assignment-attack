@@ -1,438 +1,175 @@
-// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
-
-// generator erd {
-//   provider = "prisma-erd-generator"
-//   output   = "../docs/erd.svg"
-// }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// ===========================
-// Authentication & Users
-// ===========================
-
-enum UserRole {
-  ADMIN
-  EDITOR
-  VIEWER
-}
-
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  name          String?
-  password      String?   // Hashed
-  role          UserRole  @default(EDITOR)
-  avatar        String?
-  
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  lastSeenAt    DateTime?
-  
-  // Relations
-  sessions      Session[]
-  messages      Message[]
-  notes         Note[]
-  assignments   ContactAssignment[]
-  activities    Activity[]
-  scheduledMessages ScheduledMessage[]
-  
-  @@index([email])
-  @@map("users")
+  id        String       @id @default(cuid())
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  name      String?
+  email     String?      @unique
+  avatarUrl String?
+  role      Role         @default(MEMBER)
+  teams     TeamMember[]
+  sessions  Session[]
+  Note      Note[]
 }
 
 model Session {
-  id           String   @id @default(cuid())
-  userId       String
-  token        String   @unique
-  expiresAt    DateTime
-  ipAddress    String?
-  userAgent    String?
-  
-  createdAt    DateTime @default(now())
-  
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@index([userId])
-  @@index([token])
-  @@map("sessions")
+  id        String   @id @default(cuid())
+  userId    String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id])
 }
 
-// ===========================
-// Contacts & Organizations
-// ===========================
+model Team {
+  id               String             @id @default(cuid())
+  name             String
+  createdAt        DateTime           @default(now())
+  members          TeamMember[]
+  contacts         Contact[]
+  integrations     Integration[]
+  Message          Message[]
+  Note             Note[]
+  ScheduledMessage ScheduledMessage[]
+}
+
+model TeamMember {
+  id     String   @id @default(cuid())
+  teamId String
+  userId String
+  role   TeamRole @default(EDITOR)
+
+  team Team @relation(fields: [teamId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([teamId, userId])
+}
 
 model Contact {
-  id            String    @id @default(cuid())
-  
-  // Basic Info
-  firstName     String?
-  lastName      String?
-  fullName      String?
-  email         String?
-  phone         String?
-  whatsapp      String?
-  
-  // Social Handles
-  twitterHandle String?
-  facebookId    String?
-  instagramHandle String?
-  linkedinUrl   String?
-  
-  // Metadata
-  avatar        String?
-  timezone      String?
-  language      String?   @default("en")
-  tags          String[]  @default([])
-  customFields  Json?     // Flexible key-value storage
-  
-  // Status
-  status        ContactStatus @default(ACTIVE)
-  isVerified    Boolean   @default(false) // For Twilio trial mode
-  
-  // Timestamps
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  lastContactedAt DateTime?
-  
-  // Relations
-  messages      Message[]
-  notes         Note[]
-  assignments   ContactAssignment[]
-  activities    Activity[]
-  scheduledMessages ScheduledMessage[]
-  
-  @@unique([phone])
-  @@unique([email])
-  @@index([phone])
-  @@index([email])
-  @@index([whatsapp])
-  @@index([status])
-  @@map("contacts")
+  id           String    @id @default(cuid())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  name         String?
+  phone        String?
+  email        String?
+  socialHandle String?
+  metadata     Json?
+  teamId       String
+  messages     Message[]
+  notes        Note[]
+
+  team             Team               @relation(fields: [teamId], references: [id])
+  ScheduledMessage ScheduledMessage[]
+
+  @@index([phone], name: "idx_contact_phone")
+  @@index([email], name: "idx_contact_email")
 }
 
-enum ContactStatus {
-  ACTIVE
-  ARCHIVED
-  BLOCKED
-  UNSUBSCRIBED
+model Message {
+  id           String        @id @default(cuid())
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  channel      Channel
+  externalId   String? // id from provider
+  direction    Direction
+  from         String
+  to           String
+  text         String?
+  media        String[]      @default([])
+  status       MessageStatus @default(DELIVERED)
+  contactId    String?
+  teamId       String
+  scheduledFor DateTime?
+  metadata     Json?
+
+  contact Contact? @relation(fields: [contactId], references: [id])
+  team    Team     @relation(fields: [teamId], references: [id])
 }
 
-model ContactAssignment {
-  id          String   @id @default(cuid())
-  contactId   String
-  userId      String
-  role        String   @default("owner") // owner, collaborator
-  
-  createdAt   DateTime @default(now())
-  
-  contact     Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@unique([contactId, userId])
-  @@index([userId])
-  @@map("contact_assignments")
+model Note {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  authorId  String
+  contactId String
+  content   String
+  private   Boolean  @default(false)
+  encrypted Boolean  @default(false) // optional, we can encrypt before storing
+  teamId    String
+
+  author  User    @relation(fields: [authorId], references: [id])
+  contact Contact @relation(fields: [contactId], references: [id])
+  team    Team    @relation(fields: [teamId], references: [id])
 }
 
-// ===========================
-// Messages & Conversations
-// ===========================
+model Integration {
+  id        String   @id @default(cuid())
+  teamId    String
+  provider  String // 'twilio', 'resend', 'twitter', 'facebook'
+  config    Json
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
 
-enum MessageChannel {
+  team Team @relation(fields: [teamId], references: [id])
+}
+
+model ScheduledMessage {
+  id           String      @id @default(cuid())
+  teamId       String
+  contactId    String
+  messageId    String? // optional reference to a created message entity
+  channel      Channel
+  payload      Json
+  scheduledFor DateTime
+  createdAt    DateTime    @default(now())
+  status       SchedStatus @default(PENDING)
+
+  team    Team    @relation(fields: [teamId], references: [id])
+  contact Contact @relation(fields: [contactId], references: [id])
+}
+
+enum Channel {
   SMS
-  MMS
   WHATSAPP
   EMAIL
-  TWITTER
+  X // Twitter/X
   FACEBOOK
-  INSTAGRAM
-  VOICE
 }
 
-enum MessageDirection {
+enum Direction {
   INBOUND
   OUTBOUND
 }
 
 enum MessageStatus {
-  PENDING
   SENT
   DELIVERED
-  READ
   FAILED
-  SCHEDULED
+  DELIVERING
+  DELIVERED_ACK
 }
 
-model Message {
-  id            String    @id @default(cuid())
-  
-  // Channel Info
-  channel       MessageChannel
-  direction     MessageDirection
-  status        MessageStatus @default(PENDING)
-  
-  // Content
-  body          String?   @db.Text
-  subject       String?   // For email
-  mediaUrls     String[]  @default([])
-  mediaTypes    String[]  @default([])
-  
-  // Participants
-  contactId     String
-  userId        String?   // Sender if outbound
-  
-  // External IDs
-  externalId    String?   // Twilio SID, email ID, etc.
-  threadId      String?   // For grouping conversations
-  
-  // Metadata
-  metadata      Json?     // Channel-specific data
-  errorMessage  String?
-  
-  // Timestamps
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  sentAt        DateTime?
-  deliveredAt   DateTime?
-  readAt        DateTime?
-  
-  // Relations
-  contact       Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  user          User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  
-  @@index([contactId, createdAt])
-  @@index([channel])
-  @@index([status])
-  @@index([threadId])
-  @@index([externalId])
-  @@map("messages")
+enum Role {
+  ADMIN
+  MEMBER
+  GUEST
 }
 
-model ScheduledMessage {
-  id            String    @id @default(cuid())
-  
-  // Channel & Content
-  channel       MessageChannel
-  body          String    @db.Text
-  mediaUrls     String[]  @default([])
-  
-  // Recipients
-  contactId     String
-  userId        String
-  
-  // Scheduling
-  scheduledFor  DateTime
-  timezone      String?
-  
-  // Status
-  status        MessageStatus @default(SCHEDULED)
-  sentAt        DateTime?
-  errorMessage  String?
-  
-  // Template info
-  templateId    String?
-  templateVars  Json?
-  
-  // Metadata
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  
-  // Relations
-  contact       Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@index([scheduledFor, status])
-  @@index([contactId])
-  @@map("scheduled_messages")
+enum TeamRole {
+  ADMIN
+  EDITOR
+  VIEWER
 }
 
-// ===========================
-// Notes & Collaboration
-// ===========================
-
-enum NoteVisibility {
-  PUBLIC    // Visible to all team members
-  PRIVATE   // Visible only to creator
-  TEAM      // Visible to assigned users
-}
-
-model Note {
-  id            String    @id @default(cuid())
-  
-  contactId     String
-  userId        String
-  
-  content       String    @db.Text
-  visibility    NoteVisibility @default(PUBLIC)
-  isPinned      Boolean   @default(false)
-  
-  // Mentions
-  mentions      String[]  @default([]) // User IDs
-  
-  // Encryption for private notes
-  encrypted     Boolean   @default(false)
-  
-  // Timestamps
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  
-  // Relations
-  contact       Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@index([contactId])
-  @@index([userId])
-  @@index([visibility])
-  @@map("notes")
-}
-
-// ===========================
-// Activity Log
-// ===========================
-
-enum ActivityType {
-  MESSAGE_SENT
-  MESSAGE_RECEIVED
-  NOTE_ADDED
-  CONTACT_CREATED
-  CONTACT_UPDATED
-  CONTACT_ASSIGNED
-  CALL_MADE
-  CALL_RECEIVED
-  EMAIL_SENT
-  EMAIL_RECEIVED
-  TASK_CREATED
-  TASK_COMPLETED
-}
-
-model Activity {
-  id            String    @id @default(cuid())
-  
-  type          ActivityType
-  description   String?
-  
-  contactId     String?
-  userId        String?
-  
-  metadata      Json?     // Additional context
-  
-  createdAt     DateTime  @default(now())
-  
-  // Relations
-  contact       Contact?  @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  user          User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  
-  @@index([contactId, createdAt])
-  @@index([userId])
-  @@index([type])
-  @@map("activities")
-}
-
-// ===========================
-// Integration Settings
-// ===========================
-
-model Integration {
-  id            String    @id @default(cuid())
-  
-  name          String    @unique // twilio, hubspot, slack, etc.
-  enabled       Boolean   @default(false)
-  
-  config        Json      // API keys, tokens, settings
-  
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  lastSyncedAt  DateTime?
-  
-  @@map("integrations")
-}
-
-// ===========================
-// Analytics & Metrics
-// ===========================
-
-model ConversationMetrics {
-  id                String    @id @default(cuid())
-  
-  contactId         String
-  channel           MessageChannel
-  
-  // Counts
-  messageCount      Int       @default(0)
-  responseCount     Int       @default(0)
-  
-  // Timing
-  avgResponseTime   Int?      // In seconds
-  firstResponseTime Int?      // In seconds
-  
-  // Engagement
-  lastMessageAt     DateTime?
-  conversationStartedAt DateTime
-  
-  // Status
-  isActive          Boolean   @default(true)
-  
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  
-  @@unique([contactId, channel])
-  @@index([channel])
-  @@map("conversation_metrics")
-}
-
-// ===========================
-// Templates
-// ===========================
-
-model MessageTemplate {
-  id            String    @id @default(cuid())
-  
-  name          String
-  channel       MessageChannel
-  
-  subject       String?   // For email
-  body          String    @db.Text
-  
-  variables     String[]  @default([]) // e.g., ["firstName", "company"]
-  
-  category      String?   // follow-up, welcome, etc.
-  tags          String[]  @default([])
-  
-  isActive      Boolean   @default(true)
-  
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  
-  @@index([channel])
-  @@map("message_templates")
-}
-
-// ===========================
-// Phone Numbers (Twilio)
-// ===========================
-
-model PhoneNumber {
-  id            String    @id @default(cuid())
-  
-  number        String    @unique
-  friendlyName  String?
-  
-  capabilities  Json      // SMS, MMS, Voice, Fax
-  
-  provider      String    @default("twilio")
-  providerId    String?   // Twilio SID
-  
-  isActive      Boolean   @default(true)
-  isTrial       Boolean   @default(false)
-  
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  
-  @@map("phone_numbers")
+enum SchedStatus {
+  PENDING
+  SENT
+  CANCELLED
 }
