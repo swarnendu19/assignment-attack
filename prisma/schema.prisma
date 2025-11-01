@@ -1,0 +1,438 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+// generator erd {
+//   provider = "prisma-erd-generator"
+//   output   = "../docs/erd.svg"
+// }
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===========================
+// Authentication & Users
+// ===========================
+
+enum UserRole {
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  password      String?   // Hashed
+  role          UserRole  @default(EDITOR)
+  avatar        String?
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastSeenAt    DateTime?
+  
+  // Relations
+  sessions      Session[]
+  messages      Message[]
+  notes         Note[]
+  assignments   ContactAssignment[]
+  activities    Activity[]
+  scheduledMessages ScheduledMessage[]
+  
+  @@index([email])
+  @@map("users")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  token        String   @unique
+  expiresAt    DateTime
+  ipAddress    String?
+  userAgent    String?
+  
+  createdAt    DateTime @default(now())
+  
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([token])
+  @@map("sessions")
+}
+
+// ===========================
+// Contacts & Organizations
+// ===========================
+
+model Contact {
+  id            String    @id @default(cuid())
+  
+  // Basic Info
+  firstName     String?
+  lastName      String?
+  fullName      String?
+  email         String?
+  phone         String?
+  whatsapp      String?
+  
+  // Social Handles
+  twitterHandle String?
+  facebookId    String?
+  instagramHandle String?
+  linkedinUrl   String?
+  
+  // Metadata
+  avatar        String?
+  timezone      String?
+  language      String?   @default("en")
+  tags          String[]  @default([])
+  customFields  Json?     // Flexible key-value storage
+  
+  // Status
+  status        ContactStatus @default(ACTIVE)
+  isVerified    Boolean   @default(false) // For Twilio trial mode
+  
+  // Timestamps
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastContactedAt DateTime?
+  
+  // Relations
+  messages      Message[]
+  notes         Note[]
+  assignments   ContactAssignment[]
+  activities    Activity[]
+  scheduledMessages ScheduledMessage[]
+  
+  @@unique([phone])
+  @@unique([email])
+  @@index([phone])
+  @@index([email])
+  @@index([whatsapp])
+  @@index([status])
+  @@map("contacts")
+}
+
+enum ContactStatus {
+  ACTIVE
+  ARCHIVED
+  BLOCKED
+  UNSUBSCRIBED
+}
+
+model ContactAssignment {
+  id          String   @id @default(cuid())
+  contactId   String
+  userId      String
+  role        String   @default("owner") // owner, collaborator
+  
+  createdAt   DateTime @default(now())
+  
+  contact     Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([contactId, userId])
+  @@index([userId])
+  @@map("contact_assignments")
+}
+
+// ===========================
+// Messages & Conversations
+// ===========================
+
+enum MessageChannel {
+  SMS
+  MMS
+  WHATSAPP
+  EMAIL
+  TWITTER
+  FACEBOOK
+  INSTAGRAM
+  VOICE
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  SCHEDULED
+}
+
+model Message {
+  id            String    @id @default(cuid())
+  
+  // Channel Info
+  channel       MessageChannel
+  direction     MessageDirection
+  status        MessageStatus @default(PENDING)
+  
+  // Content
+  body          String?   @db.Text
+  subject       String?   // For email
+  mediaUrls     String[]  @default([])
+  mediaTypes    String[]  @default([])
+  
+  // Participants
+  contactId     String
+  userId        String?   // Sender if outbound
+  
+  // External IDs
+  externalId    String?   // Twilio SID, email ID, etc.
+  threadId      String?   // For grouping conversations
+  
+  // Metadata
+  metadata      Json?     // Channel-specific data
+  errorMessage  String?
+  
+  // Timestamps
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sentAt        DateTime?
+  deliveredAt   DateTime?
+  readAt        DateTime?
+  
+  // Relations
+  contact       Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  user          User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  @@index([contactId, createdAt])
+  @@index([channel])
+  @@index([status])
+  @@index([threadId])
+  @@index([externalId])
+  @@map("messages")
+}
+
+model ScheduledMessage {
+  id            String    @id @default(cuid())
+  
+  // Channel & Content
+  channel       MessageChannel
+  body          String    @db.Text
+  mediaUrls     String[]  @default([])
+  
+  // Recipients
+  contactId     String
+  userId        String
+  
+  // Scheduling
+  scheduledFor  DateTime
+  timezone      String?
+  
+  // Status
+  status        MessageStatus @default(SCHEDULED)
+  sentAt        DateTime?
+  errorMessage  String?
+  
+  // Template info
+  templateId    String?
+  templateVars  Json?
+  
+  // Metadata
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  contact       Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([scheduledFor, status])
+  @@index([contactId])
+  @@map("scheduled_messages")
+}
+
+// ===========================
+// Notes & Collaboration
+// ===========================
+
+enum NoteVisibility {
+  PUBLIC    // Visible to all team members
+  PRIVATE   // Visible only to creator
+  TEAM      // Visible to assigned users
+}
+
+model Note {
+  id            String    @id @default(cuid())
+  
+  contactId     String
+  userId        String
+  
+  content       String    @db.Text
+  visibility    NoteVisibility @default(PUBLIC)
+  isPinned      Boolean   @default(false)
+  
+  // Mentions
+  mentions      String[]  @default([]) // User IDs
+  
+  // Encryption for private notes
+  encrypted     Boolean   @default(false)
+  
+  // Timestamps
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  contact       Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([contactId])
+  @@index([userId])
+  @@index([visibility])
+  @@map("notes")
+}
+
+// ===========================
+// Activity Log
+// ===========================
+
+enum ActivityType {
+  MESSAGE_SENT
+  MESSAGE_RECEIVED
+  NOTE_ADDED
+  CONTACT_CREATED
+  CONTACT_UPDATED
+  CONTACT_ASSIGNED
+  CALL_MADE
+  CALL_RECEIVED
+  EMAIL_SENT
+  EMAIL_RECEIVED
+  TASK_CREATED
+  TASK_COMPLETED
+}
+
+model Activity {
+  id            String    @id @default(cuid())
+  
+  type          ActivityType
+  description   String?
+  
+  contactId     String?
+  userId        String?
+  
+  metadata      Json?     // Additional context
+  
+  createdAt     DateTime  @default(now())
+  
+  // Relations
+  contact       Contact?  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  user          User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  @@index([contactId, createdAt])
+  @@index([userId])
+  @@index([type])
+  @@map("activities")
+}
+
+// ===========================
+// Integration Settings
+// ===========================
+
+model Integration {
+  id            String    @id @default(cuid())
+  
+  name          String    @unique // twilio, hubspot, slack, etc.
+  enabled       Boolean   @default(false)
+  
+  config        Json      // API keys, tokens, settings
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastSyncedAt  DateTime?
+  
+  @@map("integrations")
+}
+
+// ===========================
+// Analytics & Metrics
+// ===========================
+
+model ConversationMetrics {
+  id                String    @id @default(cuid())
+  
+  contactId         String
+  channel           MessageChannel
+  
+  // Counts
+  messageCount      Int       @default(0)
+  responseCount     Int       @default(0)
+  
+  // Timing
+  avgResponseTime   Int?      // In seconds
+  firstResponseTime Int?      // In seconds
+  
+  // Engagement
+  lastMessageAt     DateTime?
+  conversationStartedAt DateTime
+  
+  // Status
+  isActive          Boolean   @default(true)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@unique([contactId, channel])
+  @@index([channel])
+  @@map("conversation_metrics")
+}
+
+// ===========================
+// Templates
+// ===========================
+
+model MessageTemplate {
+  id            String    @id @default(cuid())
+  
+  name          String
+  channel       MessageChannel
+  
+  subject       String?   // For email
+  body          String    @db.Text
+  
+  variables     String[]  @default([]) // e.g., ["firstName", "company"]
+  
+  category      String?   // follow-up, welcome, etc.
+  tags          String[]  @default([])
+  
+  isActive      Boolean   @default(true)
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([channel])
+  @@map("message_templates")
+}
+
+// ===========================
+// Phone Numbers (Twilio)
+// ===========================
+
+model PhoneNumber {
+  id            String    @id @default(cuid())
+  
+  number        String    @unique
+  friendlyName  String?
+  
+  capabilities  Json      // SMS, MMS, Voice, Fax
+  
+  provider      String    @default("twilio")
+  providerId    String?   // Twilio SID
+  
+  isActive      Boolean   @default(true)
+  isTrial       Boolean   @default(false)
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@map("phone_numbers")
+}
