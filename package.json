@@ -1,0 +1,62 @@
+{
+    "name": "unified-inbox",
+    "version": "0.1.0",
+    "private": true,
+    "scripts": {
+        "dev": "next dev",
+        "build": "next build",
+        "start": "next start",
+        "lint": "next lint",
+        "lint:fix": "next lint --fix",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "type-check": "tsc --noEmit",
+        "db:migrate": "prisma migrate dev",
+        "db:generate": "prisma generate",
+        "db:seed": "ts-node --compiler-options {\\\"module\\\":\\\"CommonJS\\\"} prisma/seed.ts",
+        "db:reset": "prisma migrate reset --force",
+        "db:studio": "prisma studio",
+        "test": "jest --passWithNoTests",
+        "test:watch": "jest --watch --passWithNoTests",
+        "test:coverage": "jest --coverage --passWithNoTests"
+    },
+    "prisma": {
+        "seed": "tsx prisma/seed.ts"
+    },
+    "dependencies": {
+        "@heroicons/react": "^2.2.0",
+        "@prisma/client": "^6.18.0",
+        "@tanstack/react-query": "^5.90.6",
+        "@types/bcryptjs": "^2.4.6",
+        "@types/node": "^20.0.0",
+        "@types/react": "^18.0.0",
+        "@types/react-dom": "^18.0.0",
+        "@types/twilio": "^3.19.2",
+        "bcryptjs": "^3.0.2",
+        "better-auth": "^1.3.34",
+        "dotenv": "^17.2.3",
+        "next": "^14.0.0",
+        "prisma": "^6.18.0",
+        "react": "^18.0.0",
+        "react-dom": "^18.0.0",
+        "resend": "^6.4.0",
+        "twilio": "^5.10.4",
+        "typescript": "^5.0.0"
+    },
+    "devDependencies": {
+        "@testing-library/jest-dom": "^6.9.1",
+        "@types/jest": "^30.0.0",
+        "@typescript-eslint/eslint-plugin": "^6.0.0",
+        "@typescript-eslint/parser": "^6.0.0",
+        "autoprefixer": "^10.0.1",
+        "eslint": "^8.57.0",
+        "eslint-config-next": "^14.0.0",
+        "jest": "^30.2.0",
+        "postcss": "^8.0.0",
+        "prettier": "^3.0.0",
+        "tailwindcss": "^3.3.0",
+        "ts-jest": "^29.4.5",
+        "ts-node": "^10.9.2",
+        "tsx": "^4.20.6"
+    }
+}

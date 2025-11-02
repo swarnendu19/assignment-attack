@@ -1,0 +1,343 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model for authentication and role management
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  role      UserRole @default(EDITOR)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Better Auth required fields
+  emailVerified Boolean @default(false)
+  image         String?
+  
+  // Relations
+  messages     Message[]
+  notes        Note[]
+  assignments  Assignment[]
+  assignedBy   Assignment[] @relation("AssignedBy")
+  presence     Presence[]
+  auditLogs    AuditLog[]
+  templates    Template[]   @relation("TemplateCreator")
+  sessions     Session[]
+  accounts     Account[]
+  
+  @@map("user")
+}
+
+// Better Auth Session model
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("session")
+}
+
+// Better Auth Account model for OAuth
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([provider, providerAccountId])
+  @@map("account")
+}
+
+// Better Auth Verification model
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  
+  @@unique([identifier, value])
+  @@map("verification")
+}
+
+// Contact model for customer information management
+model Contact {
+  id            String  @id @default(cuid())
+  name          String?
+  phone         String?
+  email         String?
+  socialHandles Json?   // Store social media handles as JSON
+  metadata      Json?   // Additional contact metadata
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Relations
+  messages     Message[]
+  notes        Note[]
+  assignments  Assignment[]
+  
+  // Indexes for optimized querying
+  @@index([phone])
+  @@index([email])
+  @@index([createdAt])
+  @@map("contacts")
+}
+
+// Message model for unified message storage
+model Message {
+  id          String         @id @default(cuid())
+  contactId   String
+  userId      String?
+  channel     MessageChannel
+  direction   Direction
+  content     Json           // Store message content as JSON
+  metadata    Json?          // Channel-specific metadata
+  status      MessageStatus  @default(PENDING)
+  threadId    String
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  
+  // Relations
+  contact     Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  user        User?   @relation(fields: [userId], references: [id])
+  
+  // Indexes for optimized querying
+  @@index([contactId, createdAt])
+  @@index([threadId])
+  @@index([channel])
+  @@index([status])
+  @@index([scheduledAt])
+  @@map("messages")
+}
+
+// Note model for contact notes and collaboration
+model Note {
+  id        String   @id @default(cuid())
+  contactId String
+  userId    String
+  content   String
+  type      NoteType @default(PUBLIC)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id])
+  
+  // Indexes
+  @@index([contactId, createdAt])
+  @@index([userId])
+  @@map("notes")
+}
+
+// Integration model for channel configurations
+model Integration {
+  id          String            @id @default(cuid())
+  channel     MessageChannel    @unique
+  config      Json              // Integration configuration
+  status      IntegrationStatus @default(ACTIVE)
+  credentials Json              // Encrypted credentials
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  
+  @@map("integrations")
+}
+
+// Assignment model for conversation assignment
+model Assignment {
+  id        String   @id @default(cuid())
+  contactId String
+  userId    String
+  assignedBy String?
+  createdAt DateTime @default(now())
+  
+  // Relations
+  contact    Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  user       User    @relation(fields: [userId], references: [id])
+  assignedByUser User? @relation("AssignedBy", fields: [assignedBy], references: [id])
+  
+  // Ensure one assignment per contact
+  @@unique([contactId])
+  @@index([userId])
+  @@map("assignments")
+}
+
+// Presence model for real-time collaboration
+model Presence {
+  id         String        @id @default(cuid())
+  userId     String
+  contactId  String?
+  status     PresenceStatus @default(ONLINE)
+  lastSeen   DateTime      @default(now())
+  currentAction String?
+  
+  // Relations
+  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Ensure one presence record per user
+  @@unique([userId])
+  @@index([contactId])
+  @@map("presence")
+}
+
+// Audit log model for security and compliance
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  resource  String
+  resourceId String?
+  metadata  Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  
+  // Relations
+  user      User?    @relation(fields: [userId], references: [id])
+  
+  // Indexes for querying
+  @@index([userId, createdAt])
+  @@index([action])
+  @@index([resource, resourceId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// Scheduled job model for message scheduling
+model ScheduledJob {
+  id          String    @id @default(cuid())
+  type        JobType
+  payload     Json      // Job-specific data
+  scheduledAt DateTime
+  executedAt  DateTime?
+  status      JobStatus @default(PENDING)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  error       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Indexes for job processing
+  @@index([status, scheduledAt])
+  @@index([type])
+  @@map("scheduled_jobs")
+}
+
+// Template model for message templates
+model Template {
+  id          String       @id @default(cuid())
+  name        String
+  content     String
+  variables   Json?        // Template variables definition
+  channel     MessageChannel?
+  category    String?
+  isActive    Boolean      @default(true)
+  createdBy   String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  
+  // Relations
+  creator     User         @relation("TemplateCreator", fields: [createdBy], references: [id])
+  
+  // Indexes
+  @@index([category])
+  @@index([channel])
+  @@index([isActive])
+  @@map("templates")
+}
+
+// Enums
+enum UserRole {
+  VIEWER
+  EDITOR
+  ADMIN
+}
+
+enum MessageChannel {
+  SMS
+  WHATSAPP
+  EMAIL
+  TWITTER
+  FACEBOOK
+  INSTAGRAM
+  LINKEDIN
+}
+
+enum Direction {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  SCHEDULED
+}
+
+enum NoteType {
+  PUBLIC
+  PRIVATE
+}
+
+enum IntegrationStatus {
+  ACTIVE
+  INACTIVE
+  ERROR
+}
+
+enum PresenceStatus {
+  ONLINE
+  AWAY
+  OFFLINE
+}
+
+enum JobType {
+  SEND_MESSAGE
+  SEND_SCHEDULED_MESSAGE
+  SYNC_CONTACT
+  PROCESS_WEBHOOK
+  CLEANUP_DATA
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
