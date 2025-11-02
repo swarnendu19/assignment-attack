@@ -1,0 +1,348 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Authentication and user management models
+model Team {
+  id        String   @id @default(cuid())
+  name      String
+  settings  Json?    // Team-specific settings
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  users         User[]
+  contacts      Contact[]
+  conversations Conversation[]
+  messageTemplates MessageTemplate[]
+
+  @@map("teams")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  avatar       String?
+  password     String?  // For credential-based auth
+  role         UserRole @default(EDITOR)
+  isActive     Boolean  @default(true)
+  lastActiveAt DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Team relationship
+  teamId String
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  // OAuth accounts
+  accounts Account[]
+  sessions Session[]
+
+  // Relations
+  conversations Conversation[]
+  messages      Message[]
+  channels      Channel[]
+  notes         Note[]
+  scheduledMessages ScheduledMessage[]
+  contactEvents ContactEvent[]
+  messageTemplates MessageTemplate[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model Contact {
+  id            String   @id @default(cuid())
+  name          String?
+  phone         String?
+  email         String?
+  socialHandles Json?    // Store social media handles
+  tags          String[] // Array of tags
+  customFields  Json?    // Custom contact fields
+  lastContactAt DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Team relationship
+  teamId String
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  // Relations
+  conversations Conversation[]
+  notes         Note[]
+  events        ContactEvent[]
+  scheduledMessages ScheduledMessage[]
+
+  @@index([teamId, lastContactAt(sort: Desc)]) // For team contact list
+  @@index([phone, teamId]) // For phone lookup
+  @@index([email, teamId]) // For email lookup
+  @@index([name, teamId]) // For name search
+  @@index([tags, teamId]) // For tag filtering
+  @@map("contacts")
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  content   String   @db.Text
+  isPrivate Boolean  @default(false)
+  mentions  Json?    // Store @mentions data
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notes")
+}
+
+model ContactEvent {
+  id        String          @id @default(cuid())
+  eventType ContactEventType
+  eventData Json?
+  timestamp DateTime        @default(now())
+
+  // Relations
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("contact_events")
+}
+
+model ScheduledMessage {
+  id           String                @id @default(cuid())
+  channel      ChannelType
+  content      Json                  // Message content with metadata
+  scheduledFor DateTime
+  recurrence   Json?                 // Recurrence pattern
+  status       ScheduledMessageStatus @default(PENDING)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  // Relations
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  templateId String?
+  template   MessageTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  @@map("scheduled_messages")
+}
+
+model MessageTemplate {
+  id        String      @id @default(cuid())
+  name      String
+  content   String      @db.Text
+  variables Json?       // Array of variable names used in template
+  channel   ChannelType
+  category  String?
+  isActive  Boolean     @default(true)
+  usageCount Int        @default(0)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  // Relations
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId    String
+  team      Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  scheduledMessages ScheduledMessage[]
+
+  @@map("message_templates")
+}
+
+model Channel {
+  id          String      @id @default(cuid())
+  name        String
+  type        ChannelType
+  isActive    Boolean     @default(true)
+  config      Json? // Store channel-specific configuration
+  credentials Json? // Store encrypted credentials
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+
+  @@map("channels")
+}
+
+model Conversation {
+  id               String            @id @default(cuid())
+  externalId       String? // ID from the external platform
+  title            String?
+  status           ConversationStatus @default(ACTIVE)
+  priority         Priority          @default(NORMAL)
+  isRead           Boolean           @default(false)
+  lastMessageAt    DateTime?
+  participantCount Int               @default(0)
+  metadata         Json? // Store conversation-specific metadata
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  // Relations
+  channelId String
+  channel   Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId    String
+  team      Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  messages  Message[]
+
+  @@unique([channelId, externalId])
+  @@index([teamId, lastMessageAt(sort: Desc)]) // For team conversation list
+  @@index([userId, lastMessageAt(sort: Desc)]) // For user's conversations
+  @@index([status, teamId]) // For filtering by status
+  @@index([contactId, teamId]) // For contact conversations
+  @@index([isRead, teamId]) // For unread conversations
+  @@index([priority, lastMessageAt(sort: Desc)]) // For priority sorting
+  @@map("conversations")
+}
+
+model Message {
+  id           String      @id @default(cuid())
+  externalId   String? // ID from the external platform
+  content      String
+  contentType  ContentType @default(TEXT)
+  direction    Direction
+  isRead       Boolean     @default(false)
+  metadata     Json? // Store message-specific metadata (attachments, etc.)
+  sentAt       DateTime
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  // Relations
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, externalId])
+  @@index([conversationId, sentAt(sort: Desc)]) // For message ordering in conversations
+  @@index([userId, sentAt(sort: Desc)]) // For user's message history
+  @@index([isRead, conversationId]) // For unread message queries
+  @@index([sentAt(sort: Desc)]) // For global message timeline
+  @@index([direction, conversationId]) // For filtering by message direction
+  @@map("messages")
+}
+
+// Enums
+enum ChannelType {
+  EMAIL
+  SLACK
+  DISCORD
+  WHATSAPP
+  TELEGRAM
+  TEAMS
+  TWITTER
+  FACEBOOK
+  LINKEDIN
+  SMS
+}
+
+enum ConversationStatus {
+  ACTIVE
+  ARCHIVED
+  SNOOZED
+  CLOSED
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum ContentType {
+  TEXT
+  HTML
+  MARKDOWN
+  IMAGE
+  VIDEO
+  AUDIO
+  FILE
+  LINK
+}
+
+enum Direction {
+  INBOUND
+  OUTBOUND
+}
+
+enum UserRole {
+  VIEWER
+  EDITOR
+  ADMIN
+}
+
+enum ContactEventType {
+  CREATED
+  UPDATED
+  MESSAGE_SENT
+  MESSAGE_RECEIVED
+  NOTE_ADDED
+  TAG_ADDED
+  TAG_REMOVED
+  MERGED
+  DELETED
+}
+
+enum ScheduledMessageStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
+}

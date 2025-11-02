@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary-50: oklch(0.98 0.013 238.72);
+  --color-primary-100: oklch(0.93 0.054 240.01);
+  --color-primary-200: oklch(0.86 0.108 241.66);
+  --color-primary-300: oklch(0.76 0.176 243.83);
+  --color-primary-400: oklch(0.65 0.224 245.75);
+  --color-primary-500: oklch(0.55 0.224 248.32);
+  --color-primary-600: oklch(0.45 0.186 251.29);
+  --color-primary-700: oklch(0.39 0.148 251.81);
+  --color-primary-800: oklch(0.32 0.120 251.79);
+  --color-primary-900: oklch(0.27 0.099 251.27);
+  --color-primary-950: oklch(0.16 0.061 248.98);
+  
+  --font-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+/* Custom styles can be added here */
