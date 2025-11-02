@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma';
 import { PresenceManager } from './presence-manager';
 import { CollaborationManager } from './collaboration-manager';
 import { NotificationManager } from './notification-manager';
+import { MessageBroadcaster } from './message-broadcaster';
 
 export interface AuthenticatedSocket extends Socket {
     userId: string;
@@ -22,6 +23,7 @@ export class WebSocketServer {
     private presenceManager: PresenceManager;
     private collaborationManager: CollaborationManager;
     private notificationManager: NotificationManager;
+    private messageBroadcaster: MessageBroadcaster;
 
     constructor(httpServer: HTTPServer) {
         this.io = new SocketIOServer(httpServer, {
@@ -36,6 +38,7 @@ export class WebSocketServer {
         this.presenceManager = new PresenceManager(this.io, prisma);
         this.collaborationManager = new CollaborationManager(this.io, prisma);
         this.notificationManager = new NotificationManager(this.io, prisma);
+        this.messageBroadcaster = new MessageBroadcaster(this.io, prisma);
 
         this.setupMiddleware();
         this.setupEventHandlers();
@@ -135,9 +138,28 @@ export class WebSocketServer {
         return sockets.map(socket => (socket as AuthenticatedSocket).userId);
     }
 
+    // Get manager instances
+    public getPresenceManager(): PresenceManager {
+        return this.presenceManager;
+    }
+
+    public getCollaborationManager(): CollaborationManager {
+        return this.collaborationManager;
+    }
+
+    public getNotificationManager(): NotificationManager {
+        return this.notificationManager;
+    }
+
+    public getMessageBroadcaster(): MessageBroadcaster {
+        return this.messageBroadcaster;
+    }
+
     // Graceful shutdown
     public async close(): Promise<void> {
         return new Promise((resolve) => {
+            this.presenceManager.destroy();
+            this.collaborationManager.cleanup();
             this.io.close(() => {
                 console.log('WebSocket server closed');
                 resolve();

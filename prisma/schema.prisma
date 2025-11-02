@@ -1,9 +1,14 @@
+<<<<<<< HEAD
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
   provider = "prisma-client-js"
   output   = "../node_modules/.prisma/client"
+=======
+generator client {
+  provider = "prisma-client-js"
+>>>>>>> origin/main
 }
 
 datasource db {
@@ -11,6 +16,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+<<<<<<< HEAD
 // User model for authentication and role management
 model User {
   id        String   @id @default(cuid())
@@ -293,6 +299,142 @@ enum MessageChannel {
   FACEBOOK
   INSTAGRAM
   LINKEDIN
+=======
+model User {
+  id        String       @id @default(cuid())
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  name      String?
+  email     String?      @unique
+  avatarUrl String?
+  role      Role         @default(MEMBER)
+  teams     TeamMember[]
+  sessions  Session[]
+  Note      Note[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model Team {
+  id               String             @id @default(cuid())
+  name             String
+  createdAt        DateTime           @default(now())
+  members          TeamMember[]
+  contacts         Contact[]
+  integrations     Integration[]
+  Message          Message[]
+  Note             Note[]
+  ScheduledMessage ScheduledMessage[]
+}
+
+model TeamMember {
+  id     String   @id @default(cuid())
+  teamId String
+  userId String
+  role   TeamRole @default(EDITOR)
+
+  team Team @relation(fields: [teamId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([teamId, userId])
+}
+
+model Contact {
+  id           String    @id @default(cuid())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  name         String?
+  phone        String?
+  email        String?
+  socialHandle String?
+  metadata     Json?
+  teamId       String
+  messages     Message[]
+  notes        Note[]
+
+  team             Team               @relation(fields: [teamId], references: [id])
+  ScheduledMessage ScheduledMessage[]
+
+  @@index([phone], name: "idx_contact_phone")
+  @@index([email], name: "idx_contact_email")
+}
+
+model Message {
+  id           String        @id @default(cuid())
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  channel      Channel
+  externalId   String? // id from provider
+  direction    Direction
+  from         String
+  to           String
+  text         String?
+  media        String[]      @default([])
+  status       MessageStatus @default(DELIVERED)
+  contactId    String?
+  teamId       String
+  scheduledFor DateTime?
+  metadata     Json?
+
+  contact Contact? @relation(fields: [contactId], references: [id])
+  team    Team     @relation(fields: [teamId], references: [id])
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  authorId  String
+  contactId String
+  content   String
+  private   Boolean  @default(false)
+  encrypted Boolean  @default(false) // optional, we can encrypt before storing
+  teamId    String
+
+  author  User    @relation(fields: [authorId], references: [id])
+  contact Contact @relation(fields: [contactId], references: [id])
+  team    Team    @relation(fields: [teamId], references: [id])
+}
+
+model Integration {
+  id        String   @id @default(cuid())
+  teamId    String
+  provider  String // 'twilio', 'resend', 'twitter', 'facebook'
+  config    Json
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  team Team @relation(fields: [teamId], references: [id])
+}
+
+model ScheduledMessage {
+  id           String      @id @default(cuid())
+  teamId       String
+  contactId    String
+  messageId    String? // optional reference to a created message entity
+  channel      Channel
+  payload      Json
+  scheduledFor DateTime
+  createdAt    DateTime    @default(now())
+  status       SchedStatus @default(PENDING)
+
+  team    Team    @relation(fields: [teamId], references: [id])
+  contact Contact @relation(fields: [contactId], references: [id])
+}
+
+enum Channel {
+  SMS
+  WHATSAPP
+  EMAIL
+  X // Twitter/X
+  FACEBOOK
+>>>>>>> origin/main
 }
 
 enum Direction {
@@ -301,6 +443,7 @@ enum Direction {
 }
 
 enum MessageStatus {
+<<<<<<< HEAD
   PENDING
   SENT
   DELIVERED
@@ -339,5 +482,29 @@ enum JobStatus {
   PROCESSING
   COMPLETED
   FAILED
+=======
+  SENT
+  DELIVERED
+  FAILED
+  DELIVERING
+  DELIVERED_ACK
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+  GUEST
+}
+
+enum TeamRole {
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum SchedStatus {
+  PENDING
+  SENT
+>>>>>>> origin/main
   CANCELLED
 }
